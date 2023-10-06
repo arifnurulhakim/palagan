@@ -51,8 +51,39 @@ Route::get('/unauthorized', function () {
     abort(401, 'Unauthorized');
 })->name('Unauthorized');
 
-Route::post('/playersLogin', [PlayerController::class, 'login'])->middleware('player');
 Route::post('/admin/login', [AuthController::class, 'login']);
+Route::post('/admin/passwordUpdate', [AuthController::class, 'resetPassword']);
+
+Route::get('/admin/passwordReset', [ForgotPasswordController::class, '__invoke']);
+Route::post('/admin/passwordReset', [ForgotPasswordController::class, '__invoke']);
+
+Route::get('/user',  [PlayerController::class, 'index']);
+Route::get('/userDaily',  [PlayerController::class, 'userDaily']);
+Route::get('/userMonthly',  [PlayerController::class, 'userMonthly']);
+Route::get('/leaderboard',  [PlayerController::class, 'leaderboard']);
+
+
+
+Route::get('/password/code/check', [CodeCheckController::class, '__invoke'])->name('check');
+Route::post('/password/code/check', [CodeCheckController::class, '__invoke'])->name('check');
+
+
+
+Route::get('/password/reset', [ResetPasswordController::class, '__invoke'])->name('postreset');
+Route::post('/password/reset', [ResetPasswordController::class, '__invoke'])->name('reset');
+
+
+Route::post('/reset-first-password', [ResetPasswordController::class, 'resetFirstPassword'])->name('reset-first-password');
+
+
+
+
+
+
+
+
+
+Route::post('/playersLogin', [PlayerController::class, 'login'])->middleware('player');
 
 Route::apiResource('players', PlayerController::class);
 Route::get('/getprofile',  [PlayerController::class, 'getprofile'])->name('getprofile');
@@ -61,21 +92,7 @@ Route::get('/logout',  [PlayerController::class, 'logout'])->name('logout');
 Route::get('/logoutAdmin',  [PlayerController::class, 'logoutAdmin'])->name('logoutAdmin');
 
 
-    Route::get('/password/email', [ForgotPasswordController::class, '__invoke']);
-    Route::post('/password/email', [ForgotPasswordController::class, '__invoke']);
-
-
-
-    Route::get('/password/code/check', [CodeCheckController::class, '__invoke'])->name('check');
-    Route::post('/password/code/check', [CodeCheckController::class, '__invoke'])->name('check');
-
-
-
-    Route::get('/password/reset', [ResetPasswordController::class, '__invoke'])->name('postreset');
-    Route::post('/password/reset', [ResetPasswordController::class, '__invoke'])->name('reset');
-    
-
-Route::post('/reset-first-password', [ResetPasswordController::class, 'resetFirstPassword'])->name('reset-first-password');
+  
 
 // Route::middleware('checktokenuser')->group(function () {
 //     Route::apiResource('currency', CurrencyController::class);

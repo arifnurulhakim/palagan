@@ -14,6 +14,7 @@ class User extends Authenticatable implements JWTSubject
   
     use HasApiTokens, HasFactory, Notifiable;
     protected $table = 'bl_game_users';
+    public $timestamps = false;
     protected $fillable = [
         'name',
         'nick',

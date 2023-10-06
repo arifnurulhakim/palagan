@@ -16,11 +16,11 @@ class SendCodeResetPassword extends Mailable
      *
      * @return void
      */
-    public $code;
+    public $newPassword;
 
-    public function __construct($code)
+    public function __construct($newPassword)
     {
-        $this->code = $code;
+        $this->newPassword = $newPassword;
     }
 
     /**

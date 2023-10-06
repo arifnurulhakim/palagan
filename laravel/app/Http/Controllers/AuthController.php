@@ -7,6 +7,10 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 use Tymon\JWTAuth\Exceptions\JWTException;
 use Illuminate\Support\Facades\Validator;
 use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+
+
+
 
 class AuthController extends Controller
 {
@@ -36,6 +40,13 @@ class AuthController extends Controller
             }
     
             $user = Auth::user();
+            if($user->status != 1){
+                return response()->json([
+                    'status'=>'ERROR', 
+                    'message'=>'Admin Not Found or User not Admin', 
+                    'error_code'=>'admin_not_found'
+                ], 404);
+            }
     
             $token = JWTAuth::fromUser($user);
     
@@ -52,6 +63,55 @@ class AuthController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
+
+    public function resetPassword(Request $request)
+{
+    try {
+        $user = Auth::guard('user')->user();
+        if (!$user) {
+            return response()->json([
+                'status'=>'ERROR', 
+                'message'=>'Not Authorized', 
+                'error_code'=>'not_authorized'
+            ], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'password_current' => 'required|string|min:6',
+            'password_new' => 'required|string|min:6|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $validator->errors(),
+                'error_code' => 'INPUT_VALIDATION_ERROR'
+            ], 422);
+        }
+
+        // Periksa apakah kata sandi saat ini cocok dengan kata sandi yang ada di database
+        if (!Hash::check($request->password_current, $user->password)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Current password is incorrect',
+                'error_code' => 'INVALID_PASSWORD'
+            ], 422);
+        }
+
+        // Mengganti kata sandi dengan kata sandi baru yang di-hash
+        $user->password = bcrypt($request->password_new);
+        $user->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Password reset successfully'
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
 
     public function register(Request $request)
     {

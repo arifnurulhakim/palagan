@@ -5,410 +5,288 @@ namespace App\Http\Controllers;
 use App\Models\Player;
 use App\Models\Level;
 use App\Models\User;
+
+use App\Models\UserActivity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Tymon\JWTAuth\Exceptions\JWTException;
 use Illuminate\Support\Facades\Validator;
-
+use Illuminate\Support\Facades\DB;
 
 
 
 class PlayerController extends Controller
 {
-   
-    public function login(Request $request)
+    public function index(Request $request)
     {
+        $offset = $request->query('offset');
+        $limit = $request->query('limit');
         try {
-            $validator = Validator::make($request->all(), [
-                'username' => 'required',
-                'password' => 'required',
-            ]);
-    
-            if ($validator->fails()) {
+            $user = Auth::guard('user')->user();
+            if (!$user || $user->status != 1) {
                 return response()->json([
-                    'status' => 'error',
-                    'message' => $validator->errors(),
-                    'error_code' => 'INPUT_VALIDATION_ERROR'
-                ], 422);
-            }
-    
-            $credentials = $request->only('username', 'password');
-            Auth::shouldUse('player');
-            if (!Auth::attempt($credentials)) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Username or password invalid',
-                    'error_code' => 'USERNAME_OR_PASSWORD_INVALID'
+                    'status' => 'ERROR',
+                    'message' => 'Not Authorized',
+                    'error_code' => 'not_authorized'
                 ], 401);
             }
-    
-            $player = Auth::user();
-            $token = JWTAuth::fromUser($player);
-    
+
+            $users = User::select('id', 'name', 'nick', 'status', 'user_date', DB::raw("DATE_FORMAT(user_date, '%e %b %Y') AS user_date_string"))
+                ->where('id', '!=', 0)
+                ->orderBy('user_date', 'desc')
+                ->offset($offset)
+                ->limit($limit)
+                ->get();
+
+            $totalRecords = User::count();
+
+            // Mengubah peran berdasarkan status
+            foreach ($users as $user) {
+                $user->role = ($user->status == 1) ? 'Admin' : 'Player';
+            }
+
             return response()->json([
-                'status' => 'success',
-                'data' => [
-                    'id' => $player->id,
-                    'player' => $player->name,
-                    'username' => $player->username,
-                    'token' => $token,
-                ],
+                'status' => 'SUCCESS',
+                'draw' => 0,
+                'iTotalDisplayRecords' => $totalRecords,
+                'iTotalRecords' => count($users),
+                'offset' => $offset,
+                'limit' => $limit,
+                'data_total' => $totalRecords,
+                'data' => $users,
+                'order_name' => '',
+                'order_dir' => '',
+                'search' => ''
             ], 200);
-    
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-    
-    public function adminLogin(Request $request)
+    public function userDaily(Request $request, $date = null)
     {
         try {
-            $validator = Validator::make($request->all(), [
-                'email' => 'required',
-                'password' => 'required',
+            // Validate the request
+            $request->validate([
+                'offset' => 'nullable|integer',
+                'limit' => 'nullable|integer',
             ]);
     
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => $validator->errors(),
-                    'error_code' => 'INPUT_VALIDATION_ERROR'
-                ], 422);
-            }
+            $offset = $request->input('offset'); // Set default to 0 if both 'offset' and 'start' are not provided
+            $limit = $request->input('limit'); // Set default to 10 if both 'limit' and 'length' are not provided
     
-            $credentials = $request->only('email', 'password');
-            Auth::shouldUse('user');
-            if (!Auth::attempt($credentials)) {
+            // Ensure user is authorized
+            $user = Auth::guard('user')->user();
+            if (!$user || $user->status != 1) {
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'email or password invalid',
-                    'error_code' => 'EMAIL_OR_PASSWORD_INVALID'
+                    'status' => 'ERROR',
+                    'message' => 'Not Authorized',
+                    'error_code' => 'not_authorized'
                 ], 401);
             }
     
-            $user = Auth::user();
+            $query = "
+            SELECT pc.playercount, pc.submit_date, pc.submit_date_string, pt.playtime
+            FROM (
+                SELECT COUNT(DISTINCT(id_user)) AS playercount, 
+                       DATE_FORMAT(submit_time, '%Y-%m-%d') AS submit_date, 
+                       DATE_FORMAT(submit_time, '%e %b %Y') AS submit_date_string 
+                FROM plgn_user_activity 
+                WHERE activity_key = 'login' 
+                GROUP BY DATE_FORMAT(submit_time, '%Y-%m-%d') 
+            ) pc
+            LEFT JOIN (
+                SELECT AVG(activity_value) AS playtime, 
+                       DATE_FORMAT(submit_time, '%Y-%m-%d') AS submit_date 
+                FROM plgn_user_activity 
+                WHERE activity_key = 'playtime' 
+                GROUP BY DATE_FORMAT(submit_time, '%Y-%m-%d') 
+            ) pt ON pt.submit_date = pc.submit_date
+            ORDER BY pc.submit_date_string ASC;
+            ";
+            $results="";
+            if (!$offset && !$limit) {
+                $results = DB::select($query);
+            }else{
+                $results = DB::select($query)->limit($limit)->offset($offset);
+            }
     
-            $token = JWTAuth::fromUser($user);
+            // Menghitung jumlah total data
+            $totalRecords = count($results);
+
+            for ($i = 0; $i < count($results); $i++) {
+                $results[$i]->playtime_hours = intdiv($results[$i]->playtime, 60) . 'h:' . ($results[$i]->playtime % 60) . 'm';
+            }
+    
+            // Mendefinisikan variabel $draw, $colName, $colDir, dan $search sesuai kebutuhan Anda
+            $draw = $request->input('draw', 1);
+            $colName = $request->input('order_name', '');
+            $colDir = $request->input('order_dir', 'asc');
+            $search = $request->input('search', '');
     
             return response()->json([
-                'status' => 'success',
-                'data' => [
-                    'id' => $user->id,
-                    'user' => $user->name,
-                    'email' => $user->email,
-                    'token' => $token,
-                ],
-            ], 200);
-    
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-    
-     
-
-    public function AdminRegister(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'name' => 'required|string|max:255',
-                'email' => 'required|string|email|max:255|unique:users',
-                'password' => 'required|string|min:6',
+                'status' => 'SUCCESS',
+                'draw' => intval($draw),
+                'iTotalDisplayRecords' => $totalRecords,
+                'iTotalRecords' => $totalRecords,
+                'offset' => $offset,
+                'limit' => $limit,
+                'data_total' => $totalRecords,
+                'data' => $results,
+                'order_name' => $colName,
+                'order_dir' => $colDir,
+                'search' => $search,
             ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => $validator->errors(),
-                    'error_code' => 'INPUT_VALIDATION_ERROR'
-                ], 422);
-            }
-
-            $user = User::create([
-                'name' => $request->get('name'),
-                'email' => $request->get('email'),
-                'password' => bcrypt($request->get('password')),
-            ]);
-
-            $token = JWTAuth::fromUser($user);
-
-            return response()->json(compact('user','token'),201);
-
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e], 500);
-        }
-    }
-
-    public function logout()
-    {
-        try {
-            $user = Auth::user();
-            if (!$user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Unauthorized, please login again',
-                    'error_code' => 'USER_NOT_FOUND'
-                ], 401);
-            }
-            if (!Auth::check()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid token',
-                    'error_code' => 'INVALID_TOKEN'
-                ], 401);
-            }
-    
-            Auth::logout();
+        } catch (Exception $e) {
+            // Handle exceptions here
             return response()->json([
-                'status' => 'success',
-                'message' => 'Successfully logged out',
+                'status' => 'ERROR',
+                'message' => $e->getMessage(),
+                'error_code' => 'exception_error',
             ]);
-    
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-    
-    public function logoutAdmin(Request $request)
+
+    public function userMonthly(Request $request)
 {
     try {
+        // Validate the request
+        $request->validate([
+            'offset' => 'nullable|integer',
+            'limit' => 'nullable|integer',
+        ]);
+
+        $offset = $request->input('offset');
+        $limit = $request->input('limit');
+
+        // Ensure user is authorized
         $user = Auth::guard('user')->user();
-        if (!$user) {
+        if (!$user || $user->status != 1) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'Unauthorized, please login again',
-                'error_code' => 'USER_NOT_FOUND'
+                'status' => 'ERROR',
+                'message' => 'Not Authorized',
+                'error_code' => 'not_authorized'
             ], 401);
         }
 
-        Auth::guard('user')->logout();
+        $query = "
+        SELECT pc.playercount, pc.submit_date, pt.playtime
+        FROM (
+            SELECT COUNT(DISTINCT(id_user)) AS playercount, 
+                   DATE_FORMAT(submit_time, '%Y-%m') AS submit_date,
+                   DATE_FORMAT(submit_time, '%Y') AS submit_year
+            FROM plgn_user_activity 
+            WHERE activity_key = 'login' 
+            GROUP BY DATE_FORMAT(submit_time, '%Y-%m')
+        ) pc
+        LEFT JOIN (
+            SELECT AVG(activity_value) AS playtime, 
+                   DATE_FORMAT(submit_time, '%Y-%m') AS submit_date
+            FROM plgn_user_activity 
+            WHERE activity_key = 'playtime' 
+            GROUP BY DATE_FORMAT(submit_time, '%Y-%m')
+        ) pt ON pt.submit_date = pc.submit_date
+        ORDER BY pc.submit_year ASC, pc.submit_date ASC;
+        ";
+
+        $results = "";
+
+        if (!$offset && !$limit) {
+            $results = DB::select($query);
+        } else {
+            $results = DB::select($query)->limit($limit)->offset($offset);
+        }
+
+        // Menghitung jumlah total data
+        $totalRecords = count($results);
+
+        // Mengonversi tanggal ke format bulan dan tahun
+        for ($i = 0; $i < count($results); $i++) {
+            $results[$i]->playtime_hours = intdiv($results[$i]->playtime, 60) . 'h:' . ($results[$i]->playtime % 60) . 'm';
+        }
+
+        // Mendefinisikan variabel $draw, $colName, $colDir, dan $search sesuai kebutuhan Anda
+        $draw = $request->input('draw', 1);
+        $colName = $request->input('order_name', '');
+        $colDir = $request->input('order_dir', 'asc');
+        $search = $request->input('search', '');
 
         return response()->json([
-            'status' => 'success',
-            'message' => 'Successfully logged out',
+            'status' => 'SUCCESS',
+            'draw' => intval($draw),
+            'iTotalDisplayRecords' => $totalRecords,
+            'iTotalRecords' => $totalRecords,
+            'offset' => $offset,
+            'limit' => $limit,
+            'data_total' => $totalRecords,
+            'data' => $results,
+            'order_name' => $colName,
+            'order_dir' => $colDir,
+            'search' => $search,
         ]);
+    } catch (Exception $e) {
+        // Handle exceptions here
+        return response()->json([
+            'status' => 'ERROR',
+            'message' => $e->getMessage(),
+            'error_code' => 'exception_error',
+        ]);
+    }
+}
+public function leaderboard(Request $request)
+{
+    $offset = $request->query('offset');
+    $limit = $request->query('limit');
+    try {
+        $user = Auth::guard('user')->user();
+        if (!$user || $user->status != 1) {
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Not Authorized',
+                'error_code' => 'not_authorized'
+            ], 401);
+        }
 
+        $users = User::select('id', 'name', 'nick', 'kills', 'deaths', 'score', 'coins', 'playtime')
+            ->where('id', '!=', 0)
+            ->orderBy('user_date', 'desc');
+
+        $totalRecords = $users->count();
+
+        if ($offset !== null || $limit !== null) {
+            $users->skip($offset)->take($limit);
+        }
+
+        $results = $users->get();
+
+        for ($i = 0; $i < count($results); $i++) {
+            $split_coins = explode('&', $results[$i]->coins);
+            $results[$i]->xp_coins = $split_coins[0];
+            $results[$i]->gold_coins = $split_coins[1];
+            $results[$i]->playtime_hours = intdiv($results[$i]->playtime, 60) . 'h:' . ($results[$i]->playtime % 60) . 'm';
+        }
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'draw' => 0,
+            'iTotalDisplayRecords' => $totalRecords,
+            'iTotalRecords' => count($results),
+            'offset' => $offset,
+            'limit' => $limit,
+            'data_total' => $totalRecords,
+            'data' => $results,
+            'order_name' => '',
+            'order_dir' => '',
+            'search' => ''
+        ], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
 
-    public function getProfile()
-    {
-        try {
-            $user = Auth::user();
-            if (!$user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Unauthorized',
-                    'error_code' => 'UNAUTHORIZED'
-                ], 401);
-            }
-    
-            $userData = [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ];
-    
-            return response()->json([
-                'status' => 'success',
-                'data' => $userData,
-            ]);
-    
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-    public function getprofileadmin()
-    {
-        try {
-            $user = Auth::guard('user')->user();
-            if (!$user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Unauthorized',
-                    'error_code' => 'UNAUTHORIZED'
-                ], 401);
-            }
-    
-            $userData = [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ];
-    
-            return response()->json([
-                'status' => 'success',
-                'data' => $userData,
-            ]);
-    
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
 
-    public function index()
-    {
-        try {
-            $players = Player::all()->makeHidden(['password', 'role']);
-            return response()->json([
-                'status' => 'success',
-                'data' => $players,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-    
 
-    public function store(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'name' => 'required|string|max:255',
-                'email' => 'required|string|email|max:255',
-                'picture' => 'nullable|string',
-                'username' => 'required|string|max:255',
-                'password' => 'required|string|min:6',
-            ]);
     
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => $validator->errors(),
-                    'error_code' => 'INPUT_VALIDATION_ERROR'
-                ], 422);
-            }
-            $getplayer=Player::where('username', $request->get('username'))
-            
-            ->first();
-            if($getplayer){
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'player already use',
-                    'error_code' => 'PLAYER_ALREADY_USE'
-                ], 422);
-            }
     
-            $player = Player::create([
-                'name' => $request->get('name'),
-                'email' => $request->get('email'),
-                'picture' => $request->get('picture'),
-                'username' => $request->get('username'),
-                'password' => bcrypt($request->get('password')),
-            ]);
-    
-            $player->makeHidden(['password']);
-    
-            return response()->json([
-                'status' => 'success',
-                'data' => $player,
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function show($id)
-    {
-        try {
-            $player = Player::findOrFail($id);
-    
-            return response()->json([
-                'status' => 'success',
-                'data' => $player,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-    public function getplayerbygame($game_code)
-    {
-        try {
-            $player = Level::select('levels.game_code', 'levels.player_id', 'players.name','players.username','players.email')
-            ->join('players', 'levels.player_id', '=', 'players.id')
-            ->where('levels.game_code', $game_code)
-            ->get();
-        
-    
-            return response()->json([
-                'status' => 'success',
-                'data' => $player,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function update(Request $request, $id)
-    {
-        try {
-            $player = Player::findOrFail($id);
-    
-            $validator = Validator::make($request->all(), [
-                'name' => 'required|string|max:255',
-                'email' => 'required|string|email|max:255',
-                'picture' => 'nullable|string',
-                'username' => 'required|string|max:255',
-                'password' => 'required|string|min:6',
-            ]);
-    
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => $validator->errors(),
-                    'error_code' => 'INPUT_VALIDATION_ERROR'
-                ], 422);
-            }
-    
-            $player->update([
-                'name' => $request->get('name'),
-                'email' => $request->get('email'),
-                'picture' => $request->get('picture'),
-                'username' => $request->get('username'),
-                'password' => bcrypt($request->get('password')),
-            ]);
-    
-            $player->makeHidden(['password']);
-    
-            return response()->json([
-                'status' => 'success',
-                'data' => $player,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function destroy($id)
-    {
-        try {
-            $player = Player::findOrFail($id);
-    
-            if ($player) {
-                $player->delete();
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'Player with name ' . $player->name .' and with email '.$player->email . ' has been deleted.'
-                ]);
-            } else {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Player with name ' . $player->name .' and with email '.$player->email . ' not found.'
-                ], 404);
-            }
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function Unauthorized() {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Unauthorized',
-            'error_code' => 'UNAUTHORIZED'
-        ], 401);
-    }
 }
+
