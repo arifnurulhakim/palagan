@@ -180,11 +180,11 @@ class PlayerController extends Controller
         }
 
         $query = "
-        SELECT pc.playercount, pc.submit_date, pt.playtime
+        SELECT pc.playercount, pc.submit_date, pt.playtime, pc.submit_date_string
         FROM (
             SELECT COUNT(DISTINCT(id_user)) AS playercount, 
                    DATE_FORMAT(submit_time, '%Y-%m') AS submit_date,
-                   DATE_FORMAT(submit_time, '%Y') AS submit_year
+                   DATE_FORMAT(submit_time, '%e %b %Y') AS submit_date_string 
             FROM plgn_user_activity 
             WHERE activity_key = 'login' 
             GROUP BY DATE_FORMAT(submit_time, '%Y-%m')
@@ -196,7 +196,8 @@ class PlayerController extends Controller
             WHERE activity_key = 'playtime' 
             GROUP BY DATE_FORMAT(submit_time, '%Y-%m')
         ) pt ON pt.submit_date = pc.submit_date
-        ORDER BY pc.submit_year ASC, pc.submit_date ASC;
+        ORDER BY pc.submit_date ASC;
+        
         ";
 
         $results = "";
