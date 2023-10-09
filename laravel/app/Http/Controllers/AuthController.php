@@ -18,7 +18,7 @@ class AuthController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'name' => 'required',
+                'username' => 'required',
                 'password' => 'required',
             ]);
     
@@ -29,9 +29,14 @@ class AuthController extends Controller
                     'error_code' => 'INPUT_VALIDATION_ERROR'
                 ], 422);
             }
-            $credentials = $request->only('name', 'password');
-            Auth::shouldUse('user');
-            if (!Auth::attempt($credentials)) {
+    
+            $username = $request->input('username');
+            $password = $request->input('password');
+    
+            // Ganti 'username' dengan 'name' pada bagian where untuk mencocokkan dengan 'name' di database
+            $user = User::where('name', $username)->first();
+    
+            if (!$user || !Hash::check($password, $user->password)) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'username or password invalid',
@@ -39,12 +44,11 @@ class AuthController extends Controller
                 ], 401);
             }
     
-            $user = Auth::user();
-            if($user->status != 1){
+            if ($user->status != 1) {
                 return response()->json([
-                    'status'=>'ERROR', 
-                    'message'=>'Admin Not Found or User not Admin', 
-                    'error_code'=>'admin_not_found'
+                    'status' => 'ERROR',
+                    'message' => 'Admin Not Found or User not Admin',
+                    'error_code' => 'admin_not_found'
                 ], 404);
             }
     
@@ -56,14 +60,14 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'nick' => $user->nick,
                 'role' => 'admin',
-                'token'=> $token
+                'token' => $token
             ], 200);
     
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-
+    
     public function resetPassword(Request $request)
 {
     try {

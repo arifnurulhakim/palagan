@@ -22,6 +22,16 @@ class PlayerController extends Controller
     {
         $offset = $request->query('offset');
         $limit = $request->query('limit');
+    
+        // Set nilai default jika offset dan limit kosong
+        if (empty($offset)) {
+            $offset = 0; // Atur ke offset awal jika offset kosong
+        }
+    
+        if (empty($limit)) {
+            $limit = PHP_INT_MAX; // Atur ke nilai maksimum jika limit kosong
+        }
+    
         try {
             $user = Auth::guard('user')->user();
             if (!$user || $user->status != 1) {
@@ -31,21 +41,20 @@ class PlayerController extends Controller
                     'error_code' => 'not_authorized'
                 ], 401);
             }
-
+    
             $users = User::select('id', 'name', 'nick', 'status', 'user_date', DB::raw("DATE_FORMAT(user_date, '%e %b %Y') AS user_date_string"))
                 ->where('id', '!=', 0)
                 ->orderBy('user_date', 'desc')
                 ->offset($offset)
                 ->limit($limit)
                 ->get();
-
             $totalRecords = User::count();
-
+    
             // Mengubah peran berdasarkan status
             foreach ($users as $user) {
                 $user->role = ($user->status == 1) ? 'Admin' : 'Player';
             }
-
+    
             return response()->json([
                 'status' => 'SUCCESS',
                 'draw' => 0,
@@ -63,6 +72,7 @@ class PlayerController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
+    
     public function userDaily(Request $request, $date = null)
     {
         try {
