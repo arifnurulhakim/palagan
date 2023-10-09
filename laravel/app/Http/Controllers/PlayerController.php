@@ -54,19 +54,24 @@ class PlayerController extends Controller
             foreach ($users as $user) {
                 $user->role = ($user->status == 1) ? 'Admin' : 'Player';
             }
+             // Mendefinisikan variabel $draw, $colName, $colDir, dan $search sesuai kebutuhan Anda
+             $draw = $request->input('draw', 1);
+             $colName = $request->input('order_name', '');
+             $colDir = $request->input('order_dir', 'asc');
+             $search = $request->input('search', '');
     
             return response()->json([
                 'status' => 'SUCCESS',
-                'draw' => 0,
+                'draw' => intval($draw),
                 'iTotalDisplayRecords' => $totalRecords,
                 'iTotalRecords' => count($users),
                 'offset' => $offset,
                 'limit' => $limit,
                 'data_total' => $totalRecords,
                 'data' => $users,
-                'order_name' => '',
-                'order_dir' => '',
-                'search' => ''
+                'order_name' => $colName,
+                'order_dir' => $colDir,
+                'search' => $search,
             ], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
