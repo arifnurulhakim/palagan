@@ -52,6 +52,7 @@ Route::get('/unauthorized', function () {
 })->name('Unauthorized');
 
 Route::post('/admin/login', [AuthController::class, 'login']);
+Route::post('/admin/logout', [AuthController::class, 'logout']);
 Route::post('/admin/passwordUpdate', [AuthController::class, 'resetPassword']);
 
 Route::get('/admin/passwordReset', [ForgotPasswordController::class, '__invoke']);

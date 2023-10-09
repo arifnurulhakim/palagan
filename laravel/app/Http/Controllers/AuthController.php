@@ -149,10 +149,10 @@ class AuthController extends Controller
         }
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
         try {
-            $user = Auth::user();
+            $user = Auth::guard('user')->user();
             if (!$user) {
                 return response()->json([
                     'status' => 'error',
@@ -160,15 +160,9 @@ class AuthController extends Controller
                     'error_code' => 'USER_NOT_FOUND'
                 ], 401);
             }
-            if (!Auth::check()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid token',
-                    'error_code' => 'INVALID_TOKEN'
-                ], 401);
-            }
     
-            Auth::logout();
+            Auth::guard('user')->logout();
+    
             return response()->json([
                 'status' => 'success',
                 'message' => 'Successfully logged out',
@@ -178,6 +172,7 @@ class AuthController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
+    
     
     public function getProfile()
     {
@@ -322,41 +317,7 @@ class AuthController extends Controller
         }
     }
 
-    public function exportCSV()
-    {
-        try {
-            $data = User::select('id', 'name', 'email')->orderBy('name', 'asc')->get(); // query data dari database
-            $dateStart = date('Ymd');
-            $filename = "users_".$dateStart.".csv";
-            //local
-            $filename_path = public_path('storage/csv/' . $filename); // path to save CSV file in public/storage/csv
-            
-            //server
-            // $filename_path = '/home/doddiplexus/doddi.plexustechdev.com/templete/api/public/csv/' . $filename;
-   
-            // buat file CSV
-            $handle = fopen($filename_path, 'w');
-            fputcsv($handle, ['ID', 'Name', 'Email']);
-            foreach($data as $row) {
-                fputcsv($handle, [$row->id, $row->name, $row->email]);
-            }
-            fclose($handle);
-    
-            // Kasih balikan nama file & urlnya
-            $filename_url = url('storage/csv/'.$filename);
-            return response()->json([
-                'status' => 'SUCCESS',
-                'filename' => $filename,
-                'filename_url' => $filename_url,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'ERROR',
-                'message' => 'Failed to export CSV: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-    
+
 
 
 
